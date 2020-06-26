@@ -143,5 +143,8 @@ int thread_get_load_avg (void);
 
 /* Newly added */
 void thread_ticks_to_sleep_check (struct thread *t, void *);
+bool thread_list_less_priority_func (const struct list_elem *a,
+                                     const struct list_elem *b,
+                                     void *);
 
 #endif /* threads/thread.h */
