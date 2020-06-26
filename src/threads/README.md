@@ -42,7 +42,7 @@
        /* Owned by thread.c. */
        unsigned magic;                     /* Detects stack overflow. */
    
-       /* Newly added */
+       /* Newly added for alarm */
        int64_t ticks_to_sleep;             /* Ticks to sleep until waked up. */
      };
    ```

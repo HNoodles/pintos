@@ -101,8 +101,13 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
 
-    /* Newly added */
+    /* Newly added for alarm */
     int64_t ticks_to_sleep;             /* Ticks to sleep until waked up. */
+  
+    /* Newly added for priority scheduling */
+    int original_priority;              /* Stores the original priority when being donated. */
+    struct list locks;                  /* Locks the thread is holding. */
+    struct lock *waiting_lock;          /* Lock the thread is waiting for. */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -141,10 +146,13 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-/* Newly added */
+/* Newly added for alarm */
 void thread_ticks_to_sleep_check (struct thread *t, void *);
 bool thread_list_less_priority_func (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *);
+
+/* Newly added for priority scheduling */
+void thread_donate_priority (struct thread *to_thread);
 
 #endif /* threads/thread.h */

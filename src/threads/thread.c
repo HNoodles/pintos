@@ -205,7 +205,7 @@ thread_create (const char *name, int priority,
    * reorder new thread to run if its priority is higher than
    * current thread
    */
-  if (thread_current ()->priority < priority)
+  if (thread_get_priority () < priority)
   {
     thread_yield ();
   }
@@ -413,6 +413,19 @@ thread_list_less_priority_func (const struct list_elem *a,
 {
   return list_entry(a, struct thread, elem)->priority
        > list_entry(b, struct thread, elem)->priority;
+}
+
+/* Donate current thread's priority to TO_THREAD */
+void 
+thread_donate_priority (struct thread *to_thread)
+{
+  // disable interrupts and get old interrupt level
+  enum intr_level old_level = intr_disable ();
+
+  // TODO
+
+  // set interrupt level back
+  intr_set_level (old_level);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
