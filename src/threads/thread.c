@@ -375,6 +375,23 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
+
+/* Check blocked threads' ticks_to_sleep */
+void 
+thread_ticks_to_sleep_check (struct thread *t, void *aux)
+{
+  if (t->status == THREAD_BLOCKED && t->ticks_to_sleep > 0)
+  {
+    // decrease ticks to sleep
+    t->ticks_to_sleep--;
+
+    // unblock if ticks to sleep equals 0
+    if (t->ticks_to_sleep == 0)
+    {
+      thread_unblock(t);
+    }
+  }
+}
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -463,6 +480,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  /* Set time to sleep to 0 */
+  t->ticks_to_sleep = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
