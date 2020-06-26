@@ -102,7 +102,7 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     /* Newly added */
-    int64_t ticks_to_sleep;             /* Ticks to sleep until waked up */
+    int64_t ticks_to_sleep;             /* Ticks to sleep until waked up. */
   };
 
 /* If false (default), use round-robin scheduler.

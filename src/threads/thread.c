@@ -201,6 +201,15 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* 
+   * reorder new thread to run if its priority is higher than
+   * current thread
+   */
+  if (thread_current ()->priority < priority)
+  {
+    thread_yield ();
+  }
+
   return tid;
 }
 
@@ -336,6 +345,9 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  
+  // reorder ready list, pick a new first-priority thread to run
+  thread_yield ();
 }
 
 /* Returns the current thread's priority. */
@@ -378,7 +390,7 @@ thread_get_recent_cpu (void)
 
 /* Check blocked threads' ticks_to_sleep */
 void 
-thread_ticks_to_sleep_check (struct thread *t, void *aux)
+thread_ticks_to_sleep_check (struct thread *t, void *aux UNUSED)
 {
   if (t->status == THREAD_BLOCKED && t->ticks_to_sleep > 0)
   {
@@ -397,7 +409,7 @@ thread_ticks_to_sleep_check (struct thread *t, void *aux)
 bool 
 thread_list_less_priority_func (const struct list_elem *a,
                 const struct list_elem *b,
-                void *aux)
+                void *aux UNUSED)
 {
   return list_entry(a, struct thread, elem)->priority
        > list_entry(b, struct thread, elem)->priority;
