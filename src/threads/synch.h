@@ -24,7 +24,8 @@ struct lock
     struct semaphore semaphore; /* Binary semaphore controlling access. */
   
     /* Newly added for priority scheduling */
-    
+    struct list_elem elem;      /* List element for sorting. */
+    int max_priority;           /* The max priority of all threads holding/waiting for the lock. */
   };
 
 void lock_init (struct lock *);
@@ -43,6 +44,14 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+/* Newly added for priority scheduling */
+bool lock_list_higher_priority_func (const struct list_elem *a,
+                                     const struct list_elem *b,
+                                     void *);
+bool cond_waiter_list_higher_priority_func (const struct list_elem *a,
+                                            const struct list_elem *b,
+                                            void *);
 
 /* Optimization barrier.
 

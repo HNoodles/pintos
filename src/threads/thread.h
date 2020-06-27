@@ -106,8 +106,8 @@ struct thread
   
     /* Newly added for priority scheduling */
     int original_priority;              /* Stores the original priority when being donated. */
-    struct list locks;                  /* Locks the thread is holding. */
     struct lock *waiting_lock;          /* Lock the thread is waiting for. */
+    struct list holding_locks;          /* Locks the thread is holding. */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -148,11 +148,12 @@ int thread_get_load_avg (void);
 
 /* Newly added for alarm */
 void thread_ticks_to_sleep_check (struct thread *t, void *);
-bool thread_list_less_priority_func (const struct list_elem *a,
-                                     const struct list_elem *b,
-                                     void *);
+bool thread_list_higher_priority_func (const struct list_elem *a,
+                                       const struct list_elem *b,
+                                       void *);
 
 /* Newly added for priority scheduling */
 void thread_donate_priority (struct thread *to_thread);
+void thread_update_priority (struct thread *t);
 
 #endif /* threads/thread.h */

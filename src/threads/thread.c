@@ -246,7 +246,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem, thread_list_less_priority_func, NULL);
+  list_insert_ordered (&ready_list, &t->elem, thread_list_higher_priority_func, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -317,7 +317,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered (&ready_list, &cur->elem, thread_list_less_priority_func, NULL);
+    list_insert_ordered (&ready_list, &cur->elem, thread_list_higher_priority_func, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -344,10 +344,33 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  // ignore set priority when mlfqs
+  if (thread_mlfqs)
+  {
+    return;
+  }
+
+  // disable interrupts and get old interrupt level
+  enum intr_level old_level = intr_disable ();
+
+  // get current thread's old priority
+  int last_priority = thread_current ()->priority;
+
+  // reset current thread's original priority to NEW_PRIORITY
+  thread_current ()->original_priority = new_priority;
   
-  // reorder ready list, pick a new first-priority thread to run
-  thread_yield ();
+  // this set priority truly influenced thread's PRIORITY
+  if (new_priority > last_priority
+  || list_empty (&thread_current ()->holding_locks))
+  {
+    thread_current ()->priority = new_priority;
+    
+    // reorder ready list, pick a new first-priority thread to run
+    thread_yield ();
+  }
+
+  // set interrupt level back
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -388,7 +411,7 @@ thread_get_recent_cpu (void)
   return 0;
 }
 
-/* Check blocked threads' ticks_to_sleep */
+/* Check blocked threads' ticks_to_sleep. */
 void 
 thread_ticks_to_sleep_check (struct thread *t, void *aux UNUSED)
 {
@@ -405,27 +428,67 @@ thread_ticks_to_sleep_check (struct thread *t, void *aux UNUSED)
   }
 }
 
-/* Compares the priority of two list_elems' thread */
+/* Compares the priority of two threads. */
 bool 
-thread_list_less_priority_func (const struct list_elem *a,
-                const struct list_elem *b,
-                void *aux UNUSED)
+thread_list_higher_priority_func (const struct list_elem *a,
+                                  const struct list_elem *b,
+                                  void *aux UNUSED)
 {
   return list_entry(a, struct thread, elem)->priority
        > list_entry(b, struct thread, elem)->priority;
 }
 
-/* Donate current thread's priority to TO_THREAD */
+/* Donate current thread's priority to TO_THREAD. */
 void 
 thread_donate_priority (struct thread *to_thread)
 {
   // disable interrupts and get old interrupt level
   enum intr_level old_level = intr_disable ();
 
-  // TODO
+  // already adjusted locks max priority, 
+  // now update TO_THREAD's priority
+  thread_update_priority (to_thread);
+
+  // if TO_THREAD is in ready list, need sorting
+  if (to_thread->status == THREAD_READY)
+  {
+    list_remove (&to_thread->elem);
+    list_insert_ordered (&ready_list, &to_thread->elem, thread_list_higher_priority_func, NULL);
+  }
 
   // set interrupt level back
   intr_set_level (old_level);
+}
+
+/* Update priority according to T's holding lock. */
+void 
+thread_update_priority (struct thread *t)
+{
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  int max_priority = t->original_priority;
+
+  if (!list_empty (&t->holding_locks))
+  {
+    // sort holding locks by priority
+    list_sort (&t->holding_locks, lock_list_higher_priority_func, NULL);
+    
+    // get the highest priority
+    int lock_priority = list_entry (
+      list_front (&t->holding_locks), 
+      struct lock, 
+      elem
+    )->max_priority;
+
+    // update max priority
+    if (lock_priority > max_priority)
+    {
+      max_priority = lock_priority;
+    }
+  }
+
+  // update thread's priority
+  t->priority = max_priority;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -519,8 +582,13 @@ init_thread (struct thread *t, const char *name, int priority)
   /* Set time to sleep to 0 */
   t->ticks_to_sleep = 0;
 
+  /* Set original priority, holding locks and waiting lock */
+  t->original_priority = priority;
+  t->waiting_lock = NULL;
+  list_init (&t->holding_locks);
+
   old_level = intr_disable ();
-  list_insert_ordered (&all_list, &t->allelem, thread_list_less_priority_func, NULL);
+  list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 }
 
