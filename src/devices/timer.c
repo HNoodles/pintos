@@ -192,6 +192,25 @@ timer_interrupt (struct intr_frame *args UNUSED)
 
   // check each thread for ticks_to_sleep
   thread_foreach(thread_ticks_to_sleep_check, NULL);
+
+  // do mlfqs related works
+  if (thread_mlfqs)
+  {
+    // increase recent cpu
+    thread_increase_running_thread_recent_cpu ();
+
+    // update all threads' priority every 4 ticks
+    if (ticks % 4 == 0)
+    {
+      thread_update_mlfqs_priority ();
+    }
+
+    // update load avg and recent cpu every 1 second
+    if (ticks % TIMER_FREQ == 0)
+    {
+      thread_update_load_avg_and_recent_cpu ();
+    } 
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

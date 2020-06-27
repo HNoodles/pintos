@@ -247,16 +247,6 @@ lock_acquire (struct lock *lock)
     
     // insert lock into current thread's holding locks
     list_insert_ordered (&current_thread->holding_locks, &lock->elem, lock_list_higher_priority_func, NULL);
-
-    // // if lock waited by other higher priority threads
-    // if (lock->max_priority > thread_current ()->priority)
-    // {
-    //   // update thread's priority to lock's max priority
-    //   thread_current ()->priority = lock->max_priority;
-
-    //   // switch to higher priority thread
-    //   thread_yield ();
-    // }
   }
   
   lock->holder = current_thread;
