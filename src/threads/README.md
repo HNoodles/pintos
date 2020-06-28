@@ -4,11 +4,30 @@
 
 
 
-## Test Results
+## 概述
+
+本文档主要分为测试结果，分阶段实现分析，总结感悟和参考资料几个部分。
+
+其中测试结果部分展示了项目执行测试的结果截图和实现项目之后的代码增量统计；分阶段实现分析部分主要遵循了原本文档中提供的设计文档模板的内容，回答了其中的问题，并加入了一些对实现源码的展示和分析；总结感悟部分写了一些自己完成整个project之后的一些感想和收获；参考资料部分列举了完成project过程中在网上搜索看到的一些比较有帮助的资料。
+
+
+
+## 测试结果
 
 执行测试结果截图如下。
 
-![image-20200628134412909](./README.assets/image-20200628134412909.png)
+![image-20200628134412909](README.assets/image-20200628134412909.png)
+
+剔除不相关文件之后的代码增量如下。
+
+```sh
+ pintos/src/devices/timer.c                                                      |   45 +
+ pintos/src/threads/fixed_point.h                                                |only
+ pintos/src/threads/synch.c                                                      |  103 +++
+ pintos/src/threads/synch.h                                                      |   12 
+ pintos/src/threads/thread.c                                                     |  270 +++++++++-
+ pintos/src/threads/thread.h                                                     |   29 +
+```
 
 
 
@@ -87,6 +106,8 @@
 >> A6: Why did you choose this design?  In what ways is it superior to another design you considered?
 
 这样的设计其实在避免busy waiting上是一个挺直接的想法，直接通过每个`tick`会触发的`timer_interrupt`来更新因睡眠而阻塞的线程中的`ticks_to_sleep`属性值，直到线程被唤醒。如此设计在理解上和实现上也比较容易，也达到了避免busy waiting的目的。
+
+不过在网上查阅其它资料的过程中也发现还有进一步优化的方案，就是使用一个`sleep_list`来存储被睡眠的进程，这样每个`tick`只需要查询这个列表中的线程是否到达了唤醒时间，避免了所有thread的遍历。但是这样的实现需要控制对`sleep_list`的进出操作在屏蔽中断的过程中完成，以避免同时读写同一个list造成的线程冲突。
 
 
 
@@ -193,7 +214,7 @@ thread_list_higher_priority_func (const struct list_elem *a,
 
 这里使用的排序函数就是之前定义的。
 
-在实现的过程中我尝试通过对`sema_down`中插入waiters队列时按序插入来维护优先级队列，但是不能成功，最后还是采取了比较暴力的直接排序方式。
+在实现的过程中我尝试通过对`sema_down`中插入`waiters`队列时按序插入来维护优先级队列，但是不能成功，最后还是采取了比较暴力的直接排序方式。
 
 #### 3. condition variable
 
@@ -314,32 +335,128 @@ thread_list_higher_priority_func (const struct list_elem *a,
 
 >> C1: Copy here the declaration of each new or changed `struct` or `struct` member, global or static variable, `typedef`, or enumeration.  Identify the purpose of each in 25 words or less.
 
+#### 1. struct `thread`
 
+```c
+struct thread
+  {
+    // ... other members
+
+    /* Newly added for advanced scheduler */
+    int nice;                           /* Stores thread's niceness. */
+    fixed_t recent_cpu;                 /* Stores thread's recent cpu. */
+  };
+```
+
+在结构体中添加了：
+
+1. `nice`: 用于存储当前线程的niceness值；
+2. `recent_cpu`: 用于以`fixed_t`的形式存储当前线程的recent_cpu值；
+
+#### 2. load_avg
+
+```c
+/* Newly added for advanced scheduler */
+static fixed_t load_avg;        /* average # of threads ready to run over the past minute. */
+```
+
+在thread.c文件中添加了：
+
+1. `load_avg`: 用于以`fixed_t`的形式存储当前CPU一分钟以内的load_avg值；
+
+#### 3. fixed_point.h
+
+新增了fixed_point.h文件，其中实现了`fixed_t`类型的定义，以及相应的计算函数，以下给出定义以及一个函数示例：
+
+```c
+/* Basic definitions of fixed point. */
+typedef int fixed_t;
+
+/* Convert int to fixed point. */
+static inline fixed_t
+int_to_fixed_point (int n)
+{
+  return n * FIX_F;
+}
+```
 
 ### ---- ALGORITHMS ----
 
 >> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each has a recent_cpu value of 0.  Fill in the table below showing the scheduling decision and the priority and recent_cpu values for each thread after each given number of timer ticks:
 
-timer  recent_cpu    priority   thread
-ticks   A   B   C   A   B   C   to run
------  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+以表格的形式给出：
+
+![image-20200628175522932](README.assets/image-20200628175522932.png)
 
 >> C3: Did any ambiguities in the scheduler specification make values in the table uncertain?  If so, what rule did you use to resolve them?  Does this match the behavior of your scheduler?
 
+Scheduler中未定义在`priority`相同的情况下应当如何决定两个线程的执行顺序。
+
+在目前的实现中，假设了在这样的情况下让`recent_cpu`更小的线程先执行。在我的实现中也是这样做的，即在线程优先级比较的函数`thread_list_higher_priority_func`中加入对线程`priority`相同时的判断，使得`recent_cpu`更小的线程排在更前面，代码如下：
+
+```c
+/* Compares the priority of two threads. */
+bool 
+thread_list_higher_priority_func (const struct list_elem *a,
+                                  const struct list_elem *b,
+                                  void *aux UNUSED)
+{
+  struct thread *ta = list_entry(a, struct thread, elem);
+  struct thread *tb = list_entry(b, struct thread, elem);
+
+  // when priority equals, let thread with less recent_cpu go first
+  if (thread_mlfqs && ta->priority == tb->priority)
+  {
+    return fixed_point_to_int(ta->recent_cpu)
+         < fixed_point_to_int(tb->recent_cpu);
+  }
+
+  return ta->priority > tb->priority;
+}
+```
+
 >> C4: How is the way you divided the cost of scheduling between code inside and outside interrupt context likely to affect performance?
+
+目前的实现是将所有关于`load_avg`，`recent_cpu`，`priority`（除了创建时的第一次和`thread_set_nice`中的更新）的计算全部放在interrupt context内部执行的。这样的设计是将大量运算的时间放在中断处理程序中，这样能够尽量避免计算这些调度所用数据的过程影响线程原本的任务，导致线程执行时间变长，最后反而导致`recent_cpu`增大、`priority`降低而被换下CPU（在这样的设计下，原本的调度算法也有一定的偏差，因为计算的`recent_cpu`并不是线程任务本身占用的CPU时间）。
 
 ### ---- RATIONALE ----
 
 >> C5: Briefly critique your design, pointing out advantages and disadvantages in your design choices.  If you were to have extra time to work on this part of the project, how might you choose to refine or improve your design?
 
+目前的设计遵循了文档中所描述的`load_avg`，`recent_cpu`，`priority`的初始化和更新方式，但是没有使用64个优先级队列的方式来维护`ready_list`，而是沿着原有的一个`ready_list`的方式进行了`READY`状态进程的维护。这样设计的好处主要在于易于实现，只需要完善新增的三个变量的计算和更新逻辑即可，同时也能够满足测试脚本的要求，通过所有`mlfqs`的测试。缺点可能在于，目前的优先级调度算法在同等优先级的线程中，是采用`recent_cpu`时间较短的线程进行调度的方式，与文档中4.4BSD Scheduler定义的采用round robin的策略有些许偏差。
+
+如果还有更多的时间的话，或许可以优化这部分的实现，引入与优先级离散值个数相同的64个优先级队列，重构调度器部分的实现，以完全模仿出文档中所描述的调度方式。
+
 >> C6: The assignment explains arithmetic for fixed-point math in detail, but it leaves it open to you to implement it.  Why did you decide to implement it the way you did?  If you created an abstraction layer for fixed-point math, that is, an abstract data type and/or a set of functions or macros to manipulate fixed-point numbers, why did you do so?  If not, why not?
+
+目前采用的`fixed_point`相关的计算是在fixed_point.h文件中定义了`fix_t`类型以及相关的静态加减乘除计算函数来实现的。选择这样的实现方式其实是觉得这样更加将这一类型相关的计算聚合在一起，逻辑也比较清晰明确。而且，在变量的定义中，可以明确地知道这个变量是一个fixed-point值；在函数的调用处，也可以清晰地看出这里是一个fixed-point类型的计算。相比直接使用int类型和一串看起来有些复杂迷惑的计算公式直接代入，这样分开的设计使得代码的可读性更好。（在文档2.3 FAQ中给出的示例代码量中，也包含了一个fixed-point.h文件，也有指导作用。）
+
+在设计的时候也考虑过用一个struct来包裹fixed-point类型，让它变得更加“面向对象”一点，但是后来觉得这个struct里面将会只有一个int类型的成员，感觉没有必要，所以还是简单地通过`typedef int fixed_t`来实现了。
+
+
+
+## 总结感悟
+
+本次project过程中让我感到最大的难点之一是环境的配置，特别是bochs的安装过程中一步步的摸索令人十分头大。很不巧的是，我在执行bochs安装脚本的过程中修改脚本文件的调用权限，为了省事，对整个pintos目录执行了chmod -R 777命令，最后似乎莫名地致使我的Ubuntu系统中其它文件产生了一些权限紊乱的情况，导致sudo命令不可用、提示权限错误的日志写满了磁盘导致无法开机等等。由于我的Ubuntu是桌面系统，并非虚拟机，因此我花了比较多的时间补救（最后还是重装了系统）。也算是对操作系统的一种感性的认知学习吧。
+
+以及，在执行安装脚本的时候我没有注意漏掉了sudo命令，导致执行了很多次安装都没有成功，一度让我怀疑是由于我的/home目录由于没有格式化重装而遗留下了权限紊乱问题（/home在另一个文件系统中，是mount到系统下的）。我又去装了18.04LTS和16.04LTS两个版本的Ubuntu虚拟机来测试安装，都遇到了同样的问题，最后才想到可能是由于权限不够导致的安装失败。使用脚本安装的缺点可能就在于看不到Permission Denied的报错吧。
+
+在project的主体部分，ALARM作为第一块，实现比较简单，想法也比较直接，难点可能在于看懂pintos里的代码并模仿他去实现中断屏蔽的处理；PRIORITY SCHEDULING的部分是整个project的难点，关键在于设计一个能够在线程释放锁之后回溯捐赠优先级的机制，即数据结构中如何巧妙地保留所有发生的优先级捐赠的结果，并实时动态地更新持有锁的线程的优先级，同时还要适时地调度优先级降低的线程、换成优先级更高的；ADVANCED SCHEDULER部分，通过测试的难度不算很大，主要是跟着文档实现一个fixed-point类型数的计算函数，然后实现提供的计算公式即可，完整的更新逻辑在文档中已经描述地比较清晰了。
+
+做完整个project，感觉自己对操作系统中线程调度、竞争控制的部分理解更加深刻了，（对Ubuntu文件系统的理解也更加深刻了，）还是很有收获的。
+
+
+
+## 参考资料
+
+1. [Pintos-斯坦福大学操作系统Project详解-Project1](https://www.cnblogs.com/laiy/p/pintos_project1_thread.html)
+
+   这是一篇十分详尽的参考实现，且质量比较高，网上查到的许多其它参考教程都有这篇的影子。作者其中对pintos源码的理解十分深刻，但是在实现上尽管通过了所有测试，还是有些地方的逻辑不太正确（例如他指出thread.c中对`ready_list`的修改有三处，但其实只有两处；他的Advanced Scheduler实现中对所有线程的`priority`更新是一秒一次，而非4个tick一次等等）。我借助这篇教程更好地理解了pintos的运行机制，也参考了部分该教程的实现。
+
+2. [GitHub: OS-pintos](https://github.com/codyjack/OS-pintos)
+
+   这个代码库是GitHub上pintos相关的获得Star比较多的一个库。在这个代码库中我看到了对于ALARM部分`sleep_list`的实现，觉得自己目前的实现其实还可以更加完善，降低循环的时间。但是目前测试中线程数量比较少，实现出来的差距也不算太大。
+
+3. [斯坦福大学Pintos Project1、2 指南+总结](https://zhuanlan.zhihu.com/p/104497182)
+
+   这篇教程有些类似于综述的性质，集合了网络上许多能找到的比较精华的资源，我的参考资料1就是在这篇文章中看到的。同时，我还参考了这篇文章中提到的关于安装bochs和pintos的教程：[Ubuntu安装pintos](https://www.cnblogs.com/crayygy/p/ubuntu-pintos.html)，也是一篇十分有价值的参考资料。不过他里面安装bochs的过程与我们要求的不同，他只安装了带有gdb的那个bochs，而没有装另一个。我是看到他执行make install的时候带有sudo才想到我的安装失败可能是由于权限不够导致的。

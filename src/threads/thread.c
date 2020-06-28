@@ -444,8 +444,17 @@ thread_list_higher_priority_func (const struct list_elem *a,
                                   const struct list_elem *b,
                                   void *aux UNUSED)
 {
-  return list_entry(a, struct thread, elem)->priority
-       > list_entry(b, struct thread, elem)->priority;
+  struct thread *ta = list_entry(a, struct thread, elem);
+  struct thread *tb = list_entry(b, struct thread, elem);
+
+  // when priority equals, let thread with less recent_cpu go first
+  if (thread_mlfqs && ta->priority == tb->priority)
+  {
+    return fixed_point_to_int(ta->recent_cpu)
+         < fixed_point_to_int(tb->recent_cpu);
+  }
+
+  return ta->priority > tb->priority;
 }
 
 /* Donate current thread's priority to TO_THREAD. */
