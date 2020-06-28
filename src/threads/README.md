@@ -10,6 +10,8 @@
 
 其中测试结果部分展示了项目执行测试的结果截图和实现项目之后的代码增量统计；分阶段实现分析部分主要遵循了原本文档中提供的设计文档模板的内容，回答了其中的问题，并加入了一些对实现源码的展示和分析；总结感悟部分写了一些自己完成整个project之后的一些感想和收获；参考资料部分列举了完成project过程中在网上搜索看到的一些比较有帮助的资料。
 
+以下是文档正文。
+
 
 
 ## 测试结果
@@ -21,12 +23,12 @@
 剔除不相关文件之后的代码增量如下。
 
 ```sh
- pintos/src/devices/timer.c                                                      |   45 +
- pintos/src/threads/fixed_point.h                                                |only
- pintos/src/threads/synch.c                                                      |  103 +++
- pintos/src/threads/synch.h                                                      |   12 
- pintos/src/threads/thread.c                                                     |  270 +++++++++-
- pintos/src/threads/thread.h                                                     |   29 +
+ pintos/src/devices/timer.c                                |   45 +
+ pintos/src/threads/fixed_point.h                          |only
+ pintos/src/threads/synch.c                                |  103 +++
+ pintos/src/threads/synch.h                                |   12 
+ pintos/src/threads/thread.c                               |  270 +++++++++-
+ pintos/src/threads/thread.h                               |   29 +
 ```
 
 
