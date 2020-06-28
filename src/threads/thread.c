@@ -459,13 +459,6 @@ thread_donate_priority (struct thread *to_thread)
   // now update TO_THREAD's priority
   thread_update_priority (to_thread);
 
-  // if TO_THREAD is in ready list, need sorting
-  if (to_thread->status == THREAD_READY)
-  {
-    list_remove (&to_thread->elem);
-    list_insert_ordered (&ready_list, &to_thread->elem, thread_list_higher_priority_func, NULL);
-  }
-
   // set interrupt level back
   intr_set_level (old_level);
 }
